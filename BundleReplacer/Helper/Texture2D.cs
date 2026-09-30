@@ -15,16 +15,36 @@ internal static class Texture2D
         var texture2DInfo = manager.GetBaseField(asset, texture2D);
         var pngPath = $"{outputDir}/{GetFileName(index, texture2D, texture2DInfo)}";
 
+        using var image = GetImage(manager, bundle, asset, texture2D);
+        if (image is null) { return false; }
+        Directory.CreateDirectory(outputDir);
+        image.SaveAsPng(pngPath);
+        return true;
+    }
+
+    public static Image<Rgba32>? GetImage(AssetsManager manager, BundleFileInstance bundle, AssetsFileInstance asset, AssetFileInfo texture2D, Dictionary<string, StreamWrapper>? resourceStreams = null)
+    {
+        var texture2DInfo = manager.GetBaseField(asset, texture2D);
         var texFile = TextureFile.ReadTextureFile(texture2DInfo);
         if (texFile.m_Width == 0 && texFile.m_Height == 0)
         {
-            return false;
+            return null;
         }
-        TextureHelper.GetResSTexture(texFile, bundle);
+        var streamInfo = texFile.m_StreamData;
+        if (resourceStreams is not null && resourceStreams.TryGetValue(Path.GetFileName(streamInfo.path), out var stream))
+        {
+            stream.Stream.Position = (long)streamInfo.offset;
+            texFile.pictureData = new byte[streamInfo.size];
+            stream.Stream.ReadExactly(texFile.pictureData);
+        }
+        else
+        {
+            TextureHelper.GetResSTexture(texFile, bundle);
+        }
         var bytes = texFile.pictureData;
         if (bytes is null || bytes.Length == 0)
         {
-            return false;
+            return null;
         }
 
         var width = texFile.m_Width;
@@ -46,31 +66,26 @@ internal static class Texture2D
             height = newSize.Height;
 
             byte[] decData = TextureEncoderDecoder.Decode(bytes, width, height, format);
-            if (decData is null) { return false; }
+            if (decData is null) { return null; }
 
-            Image<Rgba32> image = Image.LoadPixelData<Rgba32>(decData, width, height);
-
-            image = Texture2DSwitchDeswizzler.SwitchUnswizzle(image, blockSize, gobsPerBlock);
+            using Image<Rgba32> decoded = Image.LoadPixelData<Rgba32>(decData, width, height);
+            Image<Rgba32> image = Texture2DSwitchDeswizzler.SwitchUnswizzle(decoded, blockSize, gobsPerBlock);
             if (originalWidth != width || originalHeight != height)
             {
                 image.Mutate(i => i.Crop(originalWidth, originalHeight));
             }
             image.Mutate(i => i.Flip(FlipMode.Vertical));
-            Directory.CreateDirectory(outputDir);
-            image.SaveAsPng(pngPath);
+            return image;
         }
         else
         {
             byte[] decData = TextureEncoderDecoder.Decode(bytes, width, height, format);
-            if (decData is null) { return false; }
+            if (decData is null) { return null; }
 
             Image<Rgba32> image = Image.LoadPixelData<Rgba32>(decData, width, height);
             image.Mutate(i => i.Flip(FlipMode.Vertical));
-            Directory.CreateDirectory(outputDir);
-            image.SaveAsPng(pngPath);
+            return image;
         }
-
-        return true;
     }
 
     public static bool Import(int index, string replaceDir, AssetsManager manager, BundleFileInstance bundle, AssetsFileInstance asset, AssetFileInfo texture2D, Dictionary<string, StreamWrapper> resourceStreams)
@@ -80,7 +95,12 @@ internal static class Texture2D
 
         if (!File.Exists(pngPath)) { return false; }
         using Image<Rgba32> image = Image.Load<Rgba32>(pngPath);
+        return ImportImage(image, manager, bundle, asset, texture2D, resourceStreams);
+    }
 
+    public static bool ImportImage(Image<Rgba32> image, AssetsManager manager, BundleFileInstance bundle, AssetsFileInstance asset, AssetFileInfo texture2D, Dictionary<string, StreamWrapper> resourceStreams)
+    {
+        var texture2DInfo = manager.GetBaseField(asset, texture2D);
         var width = image.Width;
         var height = image.Height;
 
@@ -109,7 +129,7 @@ internal static class Texture2D
                 Size = newSize
             }).Flip(FlipMode.Vertical));
 
-            Image<Rgba32> swizzledImage = Texture2DSwitchDeswizzler.SwitchSwizzle(image, blockSize, gobsPerBlock);
+            using Image<Rgba32> swizzledImage = Texture2DSwitchDeswizzler.SwitchSwizzle(image, blockSize, gobsPerBlock);
 
             encData = TextureEncoderDecoder.Encode(swizzledImage, paddedWidth, paddedHeight, format);
         }

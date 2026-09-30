@@ -10,6 +10,7 @@ internal static class BundleReplaceHelper
         public bool MonoBehaviour = false;
         public bool TextAsset = false;
         public bool Texture2D = false;
+        public bool Sprite = false;
         public bool VideoClip = false;
     }
 
@@ -30,6 +31,29 @@ internal static class BundleReplaceHelper
         File.Delete(outputPath + ".tmp");
     }
 
+    public static void SaveBundle(string outputPath, AssetsManager manager, BundleFileInstance bundle, Dictionary<string, StreamWrapper> resourceStreams)
+    {
+        foreach (var info in bundle.file.BlockAndDirInfo.DirectoryInfos)
+        {
+            if (resourceStreams.TryGetValue(info.Name, out var stream))
+            {
+                foreach (var block in stream.BlankBlocks)
+                {
+                    stream.Stream.Position = block.Start;
+                    stream.Stream.Write(Enumerable.Repeat((byte)0, block.Length).ToArray());
+                }
+                info.SetNewData(stream.Stream.ToArray());
+                stream.Stream.Dispose();
+            }
+            else
+            {
+                var asset = bundle.loadedAssetsFiles.FirstOrDefault(asset => asset.name == info.Name);
+                if (asset is not null) { info.SetNewData(asset.file); }
+            }
+        }
+        CompressBundle(outputPath, manager, bundle);
+    }
+
     public static Filter ParseFilter(string filterStr)
     {
         if (string.IsNullOrWhiteSpace(filterStr))
@@ -39,6 +63,7 @@ internal static class BundleReplaceHelper
                 MonoBehaviour = true,
                 TextAsset = true,
                 Texture2D = true,
+                Sprite = true,
                 VideoClip = true,
             };
         }
@@ -60,6 +85,9 @@ internal static class BundleReplaceHelper
                 case "Texture2D":
                 case "png":
                     filter.Texture2D = true;
+                    break;
+                case "Sprite":
+                    filter.Sprite = true;
                     break;
                 case "VideoClip":
                 case "mp4":

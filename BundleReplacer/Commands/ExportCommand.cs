@@ -17,7 +17,7 @@ public class ExportCommand : Command
         {
             {"p|path=", "The path to the bundle file", v => bundlePath = v},
             {"o|output=", "The output directory", v => outputDir = v},
-            {"f|filter=", "Filter, including: MonoBehaviour, TextAsset, Texture2D", v => filterStr = v },
+            {"f|filter=", "Filter, including: MonoBehaviour, TextAsset, Texture2D, Sprite", v => filterStr = v },
         };
     }
 
@@ -41,6 +41,7 @@ public class ExportCommand : Command
     {
         var manager = new AssetsManager();
         var bundle = manager.LoadBundleFile(bundlePath);
+        var sprites = filter.Sprite ? new Sprite(manager, bundle) : null;
 
         for (int index = 0; index < bundle.file.BlockAndDirInfo.DirectoryInfos.Count; index++)
         {
@@ -59,6 +60,9 @@ public class ExportCommand : Command
                         break;
                     case (int)AssetClassID.Texture2D:
                         if (filter.Texture2D) { Texture2D.Export(index, outputDir, manager, bundle, assetsFile, info); }
+                        break;
+                    case (int)AssetClassID.Sprite:
+                        if (filter.Sprite) { sprites!.Export(index, outputDir, assetsFile, info); }
                         break;
                     case (int)AssetClassID.VideoClip:
                         if (filter.VideoClip) { VideoClip.Export(index, outputDir, manager, bundle, assetsFile, info); }
